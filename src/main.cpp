@@ -5,19 +5,23 @@
 #include <imgui_impl_opengl3.h>
 #include <iostream>
 #include <vector>
+#include <numbers>
 
+struct Vertex
+{
+    float x{}, y{}, z{};
+};
 
-class Object 
+class Object
 {
 private:
-    struct Vertex 
-    {
-        float x{}, y{}, z{};
-    };
-
-    struct Edge 
+    struct Edge
     {
         int v1, v2;
+    };
+    struct Reflection
+    {
+        bool x{ false }, y{ false }, z{ false };
     };
 
     void transformVertexes()
@@ -26,14 +30,14 @@ private:
         {
             const Vertex& src = originalVertices[i];
             Vertex& dst = vertices[i];
-            
+
             for (size_t j = 0; j < 3; j++)
             {
                 float temp { src.x * transformMatrix[0][j] +
                             src.y * transformMatrix[1][j] +
                             src.z * transformMatrix[2][j] +
                             1.0f  * transformMatrix[3][j] };
-                
+
                 switch (j)
                 {
                     case 0: dst.x = temp; break;
@@ -50,9 +54,12 @@ private:
     std::vector<std::vector<float>> transformMatrix;
 public:
     Vertex center;
+    Vertex scale;
+    Vertex rotate;
+    Reflection reflection;
 
-    Object() : transformMatrix(4, std::vector<float>(4, 0.0f))
-    { 
+    Object() : transformMatrix(4, std::vector<float>(4, 0.0f)), scale { 1, 1, 1 }
+    {
         for (size_t i{}; i < 4; i++)
             transformMatrix[i][i] = 1.0f;
     }
@@ -61,16 +68,18 @@ public:
     {
         glBegin(GL_LINES);
         glColor3f(1.0f, 1.0f, 1.0f);
-        
+
         for (const auto& edge : edges)
         {
             const Vertex& v1 = vertices[edge.v1];
             const Vertex& v2 = vertices[edge.v2];
-            
+
             glVertex3f(v1.x, v1.y, v1.z);
             glVertex3f(v2.x, v2.y, v2.z);
         }
         glEnd();
+        
+
     }
 
     void setTransformMatrix(const std::vector<std::vector<float>>& transformMatrix)
@@ -89,19 +98,6 @@ public:
     friend Object initLetterK();
 };
 
-class Controller
-{
-private: 
-    Object& obj;
-
-public:
-    Controller(Object& o) : obj { o } { }
-
-    void imguiPosSliders()
-    {
-        
-    }
-};
 
 Object initLetterK()
 {
@@ -144,7 +140,7 @@ Object initLetterK()
         { 8, 9 },
         { 9, 10 },
         { 10, 0 },
-        
+
         {11, 12},
         {12, 13},
         {13, 14},
@@ -170,6 +166,28 @@ Object initLetterK()
         {10,21}
     };
     obj.vertices = obj.originalVertices;
+
+    Vertex minpos { obj.vertices[0].x, obj.vertices[0].y, obj.vertices[0].z };
+    Vertex maxpos { obj.vertices[0].x, obj.vertices[0].y, obj.vertices[0].z };
+
+    for (const auto& vertex : obj.vertices)
+    {
+        if(minpos.x > vertex.x) minpos.x = vertex.x;
+        if(minpos.y > vertex.y) minpos.y = vertex.y;
+        if(minpos.z > vertex.z) minpos.z = vertex.z;
+
+        if(maxpos.x < vertex.x) maxpos.x = vertex.x;
+        if(maxpos.y < vertex.y) maxpos.y = vertex.y;
+        if(maxpos.z < vertex.z) maxpos.z = vertex.z;
+    }
+    Vertex v { (minpos.x + maxpos.x) / 2, (minpos.y + maxpos.y) / 2, (minpos.z + maxpos.z) / 2 };
+
+    for (auto& vertex : obj.originalVertices)
+    {
+        vertex.x -= v.x;
+        vertex.y -= v.y;
+        vertex.z -= v.z;
+    }
     return obj;
 }
 
@@ -203,16 +221,143 @@ std::vector<std::vector<float>> getTranslateMatrix(float dx, float dy, float dz)
     };
 }
 
+std::vector<std::vector<float>> getScaleMatrix(float a, float b, float c)
+{
+    return {
+        { a, 0, 0, 0 },
+        { 0, b, 0, 0 },
+        { 0, 0, c, 0 },
+        { 0, 0, 0, 1 }
+    };
+}
+
+std::vector<std::vector<float>> getRotateMatrixX(float angle)
+{
+    return {
+        { 1, 0, 0, 0 },
+        { 0, std::cos(angle), std::sin(angle), 0 }, 
+        { 0, -std::sin(angle), std::cos(angle), 0 },
+        { 0, 0, 0, 1 }
+    };
+}
+
+std::vector<std::vector<float>> getRotateMatrixY(float angle)
+{
+    return {
+        { std::cos(angle), 0, -std::sin(angle), 0 }, 
+        { 0, 1, 0, 0 },
+        { std::sin(angle), 0, std::cos(angle), 0 },
+        { 0, 0, 0, 1 }
+    };
+}
+
+std::vector<std::vector<float>> getRotateMatrixZ(float angle)
+{
+    return {
+        { std::cos(angle), std::sin(angle), 0, 0 }, 
+        { -std::sin(angle), std::cos(angle), 0, 0 },
+        { 0, 0, 1, 0 },
+        { 0, 0, 0, 1 }
+    };
+}
+
+std::vector<std::vector<float>> getReflectionMatrix(float a, float b, float c)
+{
+    a = (int)a ? -1 : 1;
+    b = (int)b ? -1 : 1;
+    c = (int)c ? -1 : 1;
+    return {
+        { b, 0, 0, 0 },
+        { 0, c, 0, 0 },
+        { 0, 0, a, 0 },
+        { 0, 0, 0, 1 }
+    };
+}
+
+float degreeToRad(float angle)
+{
+    return angle * std::numbers::pi / 180.0;
+}
+
+class Controller
+{
+private:
+    Object& obj;
+
+public:
+    Controller(Object& o) : obj { o } { }
+
+    std::vector<std::vector<float>> imguiPosSliders()
+    {
+        ImGui::BeginChild("position");
+        ImGui::Text("Position");
+        ImGui::SliderFloat("x", &obj.center.x, -1.0f, 1.0f, "%.3f");
+        ImGui::SliderFloat("y", &obj.center.y, -1.0f, 1.0f, "%.3f");
+        ImGui::SliderFloat("z", &obj.center.z, -1.0f, 1.0f, "%.3f");
+        ImGui::EndChild();
+
+        return getTranslateMatrix(obj.center.x, obj.center.y, obj.center.z);
+    }
+
+    std::vector<std::vector<float>> imguiScaleSliders()
+    {
+        ImGui::BeginChild("scale");
+        ImGui::Text("Scale");
+        ImGui::SliderFloat("x", &obj.scale.x, 0.0f, 5.0f, "%.2f");
+        ImGui::SliderFloat("y", &obj.scale.y, 0.0f, 5.0f, "%.2f");
+        ImGui::SliderFloat("z", &obj.scale.z, 0.0f, 5.0f, "%.2f");
+        ImGui::EndChild();
+
+        Vertex curCenter { obj.center };
+
+        std::vector<std::vector<float>> tmp { getTranslateMatrix(-curCenter.x, -curCenter.y, -curCenter.z) };
+        tmp = matrixMult(tmp, getScaleMatrix(obj.scale.x, obj.scale.y, obj.scale.z));
+        tmp = matrixMult(tmp, getTranslateMatrix(curCenter.x, curCenter.y, curCenter.z));
+
+        return tmp;
+    }
+
+    std::vector<std::vector<float>> imguiRotateSliders()
+    {
+        ImGui::BeginChild("rotate");
+        ImGui::Text("Rotate");
+        ImGui::SliderFloat("x", &obj.rotate.x, -180.0f, 180.0f, "%.1f");
+        ImGui::SliderFloat("y", &obj.rotate.y, -180.0f, 180.0f, "%.1f");
+        ImGui::SliderFloat("z", &obj.rotate.z, -180.0f, 180.0f, "%.1f");
+        ImGui::EndChild();
+        
+        std::vector<std::vector<float>> rotateMatrix { getRotateMatrixX(degreeToRad(obj.rotate.x)) };
+        rotateMatrix = matrixMult(rotateMatrix, getRotateMatrixY(degreeToRad(obj.rotate.y)));
+        rotateMatrix = matrixMult(rotateMatrix, getRotateMatrixZ(degreeToRad(obj.rotate.z)));
+        rotateMatrix = matrixMult(getTranslateMatrix(-obj.center.x, -obj.center.y, -obj.center.z), rotateMatrix);
+        rotateMatrix = matrixMult(rotateMatrix, getTranslateMatrix(obj.center.x, obj.center.y, obj.center.z));
+        return rotateMatrix;
+    }
+
+    std::vector<std::vector<float>> imguiReflectionCB()
+    {
+        ImGui::BeginChild("reflection");
+        ImGui::Text("Reflection");
+        ImGui::Checkbox("XOY", &obj.reflection.x);
+        ImGui::Checkbox("YOZ", &obj.reflection.y);
+        ImGui::Checkbox("XOZ", &obj.reflection.z);
+        ImGui::EndChild();
+
+        return getReflectionMatrix(obj.reflection.x, obj.reflection.y, obj.reflection.z);
+    }
+};
+
+
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 {
     glViewport(0, 0, width, height);
 }
 
-int main() 
+int main()
 {
     const int windowWidth { 800 };
     const int windowHeight { 800 };
-    if (!glfwInit()) 
+    if (!glfwInit())
     {
         std::cerr << "Failed to initialize GLFW\n";
         return -1;
@@ -224,7 +369,7 @@ int main()
     GLFWwindow* window = glfwCreateWindow(windowWidth, windowHeight, "надеюсь, я не забуду поменять это глупенькое название, я кстати попил вкусный зеленый чай", nullptr, nullptr);
     glfwMakeContextCurrent(window);
 
-    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) 
+    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
     {
         std::cerr << "Failed to initialize GLAD\n";
         return -1;
@@ -244,22 +389,26 @@ int main()
     ImGui_ImplOpenGL3_Init("#version 120");
 
     Object kLetter { initLetterK() };
+    Controller controller { kLetter };
 
 
-    while (!glfwWindowShouldClose(window)) 
+    std::vector<std::vector<float>> transformMatrix;
+    while (!glfwWindowShouldClose(window))
     {
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
         ImGui::Begin("Settings");
-        ImGui::Text("Position:");
-        if(ImGui::SliderFloat("x", &kLetter.center.x, -1.0f, 1.0f, "%.2f"))
-            kLetter.setTransformMatrix(getTranslateMatrix(kLetter.center.x, kLetter.center.y, kLetter.center.z));
-        if(ImGui::SliderFloat("y", &kLetter.center.y, -1.0f, 1.0f, "%.2f"))
-            kLetter.setTransformMatrix(getTranslateMatrix(kLetter.center.x, kLetter.center.y, kLetter.center.z));
-        if(ImGui::SliderFloat("z", &kLetter.center.z, -1.0f, 1.0f, "%.2f"))
-            kLetter.setTransformMatrix(getTranslateMatrix(kLetter.center.x, kLetter.center.y, kLetter.center.z));
+        transformMatrix = controller.imguiPosSliders();
+        transformMatrix = matrixMult(transformMatrix, controller.imguiScaleSliders());
+        transformMatrix = matrixMult(transformMatrix, controller.imguiRotateSliders());
+        transformMatrix = matrixMult(transformMatrix, controller.imguiReflectionCB());
+        // 12.Вращение вокруг геометрического центра в одной плоскости с одновременным перемещением вдоль одной из осей.
+        
         ImGui::End();
+
+        kLetter.setTransformMatrix(transformMatrix);
+
 
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
@@ -267,8 +416,8 @@ int main()
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
 
-        glTranslatef(0.0f, 0.0f, -3.0f);       
-        glRotatef(30.0f, 1.0f, 0.0f, 0.0f);    
+        glTranslatef(0.0f, 0.0f, -3.0f);
+        glRotatef(30.0f, 1.0f, 0.0f, 0.0f);
         glRotatef(-40.0f, 0.0f, 1.0f, 0.0f);
 
         kLetter.draw();
