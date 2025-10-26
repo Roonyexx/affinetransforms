@@ -12,7 +12,7 @@ class Object
 private:
     struct Vertex 
     {
-        float x, y, z;
+        float x{}, y{}, z{};
     };
 
     struct Edge 
@@ -20,41 +20,36 @@ private:
         int v1, v2;
     };
 
-    struct Center
+    void transformVertexes()
     {
-        float x{}, y{}, z{};
-    };
-
-void transformVertexes()
-{
-    for (size_t i = 0; i < originalVertices.size(); i++)
-    {
-        const Vertex& src = originalVertices[i];
-        Vertex& dst = vertices[i];
-        
-        for (size_t j = 0; j < 3; j++)
+        for (size_t i = 0; i < originalVertices.size(); i++)
         {
-            float temp { src.x * transformMatrix[0][j] +
-                         src.y * transformMatrix[1][j] +
-                         src.z * transformMatrix[2][j] +
-                         1.0f  * transformMatrix[3][j] };
+            const Vertex& src = originalVertices[i];
+            Vertex& dst = vertices[i];
             
-            switch (j)
+            for (size_t j = 0; j < 3; j++)
             {
-                case 0: dst.x = temp; break;
-                case 1: dst.y = temp; break;
-                case 2: dst.z = temp; break;
+                float temp { src.x * transformMatrix[0][j] +
+                            src.y * transformMatrix[1][j] +
+                            src.z * transformMatrix[2][j] +
+                            1.0f  * transformMatrix[3][j] };
+                
+                switch (j)
+                {
+                    case 0: dst.x = temp; break;
+                    case 1: dst.y = temp; break;
+                    case 2: dst.z = temp; break;
+                }
             }
         }
     }
-}
 
     std::vector<Vertex> originalVertices;
     std::vector<Vertex> vertices;
     std::vector<Edge> edges;
     std::vector<std::vector<float>> transformMatrix;
 public:
-    Center center;
+    Vertex center;
 
     Object() : transformMatrix(4, std::vector<float>(4, 0.0f))
     { 
@@ -78,17 +73,34 @@ public:
         glEnd();
     }
 
-    void setTransformMatrix(std::vector<std::vector<float>> transformMatrix)
+    void setTransformMatrix(const std::vector<std::vector<float>>& transformMatrix)
     {
-        if (transformMatrix.size() != 4 || transformMatrix[0].size() != 4) throw std::runtime_error("invalid arg");
-        for (size_t i{}; i < 4; i++)
+        if (transformMatrix.size() != 4 || transformMatrix[0].size() != 4)
+            throw std::runtime_error("invalid arg");
+
+        for (size_t i = 0; i < 4; i++)
             this->transformMatrix[i] = transformMatrix[i];
+
         transformVertexes();
     }
 
 
 
     friend Object initLetterK();
+};
+
+class Controller
+{
+private: 
+    Object& obj;
+
+public:
+    Controller(Object& o) : obj { o } { }
+
+    void imguiPosSliders()
+    {
+        
+    }
 };
 
 Object initLetterK()
@@ -161,6 +173,25 @@ Object initLetterK()
     return obj;
 }
 
+template <typename T>
+std::vector<std::vector<T>> matrixMult(const std::vector<std::vector<T>>& m1, const std::vector<std::vector<T>>& m2)
+{
+    if (m1[0].size() != m2.size()) throw std::runtime_error("invalid arg");
+    const size_t rows{ m1.size() }, cols{ m2[0].size() };
+    std::vector<std::vector<T>> result(rows, std::vector<T>(cols, 0));
+
+    for (size_t i{}; i < rows; i++)
+    {
+        for (size_t j{}; j < cols; j++)
+        {
+            for (size_t k{}; k < m2.size(); k++)
+            {
+                result[i][j] += m1[i][k] * m2[k][j];
+            }
+        }
+    }
+    return result;
+}
 
 std::vector<std::vector<float>> getTranslateMatrix(float dx, float dy, float dz)
 {
@@ -190,7 +221,7 @@ int main()
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
 
-    GLFWwindow* window = glfwCreateWindow(windowWidth, windowHeight, "надеюсь, я не забуду поменять это глупенькое название, я кстати попил вкусного зеленого чая", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(windowWidth, windowHeight, "надеюсь, я не забуду поменять это глупенькое название, я кстати попил вкусный зеленый чай", nullptr, nullptr);
     glfwMakeContextCurrent(window);
 
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) 
@@ -198,6 +229,10 @@ int main()
         std::cerr << "Failed to initialize GLAD\n";
         return -1;
     }
+
+    glMatrixMode(GL_PROJECTION);
+    glOrtho(-1, 1, -1.0, 1.0, 0.1, 100.0);
+
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
 
@@ -224,18 +259,25 @@ int main()
             kLetter.setTransformMatrix(getTranslateMatrix(kLetter.center.x, kLetter.center.y, kLetter.center.z));
         if(ImGui::SliderFloat("z", &kLetter.center.z, -1.0f, 1.0f, "%.2f"))
             kLetter.setTransformMatrix(getTranslateMatrix(kLetter.center.x, kLetter.center.y, kLetter.center.z));
-
         ImGui::End();
 
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
-        ImGui::Render();
+
+        glMatrixMode(GL_MODELVIEW);
+        glLoadIdentity();
+
+        glTranslatef(0.0f, 0.0f, -3.0f);       
+        glRotatef(30.0f, 1.0f, 0.0f, 0.0f);    
+        glRotatef(-40.0f, 0.0f, 1.0f, 0.0f);
 
         kLetter.draw();
 
+        ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        glfwPollEvents();
         glfwSwapBuffers(window);
+
+        glfwPollEvents();
     }
 
     ImGui_ImplOpenGL3_Shutdown();
