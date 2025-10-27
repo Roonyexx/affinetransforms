@@ -166,12 +166,12 @@ Object initLetterK()
         {9,20},
         {10,21}
     };
-    obj.vertices = obj.originalVertices;
+    
 
-    Vertex minpos { obj.vertices[0].x, obj.vertices[0].y, obj.vertices[0].z };
-    Vertex maxpos { obj.vertices[0].x, obj.vertices[0].y, obj.vertices[0].z };
+    Vertex minpos { obj.originalVertices[0].x, obj.originalVertices[0].y, obj.originalVertices[0].z };
+    Vertex maxpos { obj.originalVertices[0].x, obj.originalVertices[0].y, obj.originalVertices[0].z };
 
-    for (const auto& vertex : obj.vertices)
+    for (const auto& vertex : obj.originalVertices)
     {
         if(minpos.x > vertex.x) minpos.x = vertex.x;
         if(minpos.y > vertex.y) minpos.y = vertex.y;
@@ -189,6 +189,7 @@ Object initLetterK()
         vertex.y -= v.y;
         vertex.z -= v.z;
     }
+    obj.vertices = obj.originalVertices;
     return obj;
 }
 
@@ -264,9 +265,9 @@ std::vector<std::vector<float>> getRotateMatrixZ(float angle)
 
 std::vector<std::vector<float>> getReflectionMatrix(float a, float b, float c)
 {
-    a = (int)a ? -1 : 1;
-    b = (int)b ? -1 : 1;
-    c = (int)c ? -1 : 1;
+    a = (int)a ? -1.0f : 1.0f;
+    b = (int)b ? -1.0f : 1.0f;
+    c = (int)c ? -1.0f : 1.0f;
     return {
         { b, 0, 0, 0 },
         { 0, c, 0, 0 },
@@ -289,14 +290,18 @@ private:
     {
         bool isAnim;
         bool isMovingOnRight;
-        int translationAxis;
-        int rotationPlane;
+        float* translateAxis;
+        float* rotatePlane;
+        float movingSpeed;
+        float rotationSpeed;
+        double lastTime;
+
         
-        AnimationParam() : isAnim{ false }, isMovingOnRight{ true }, translationAxis{}, rotationPlane{} { }
+        AnimationParam(float* ta, float* rp) : isAnim{ false }, isMovingOnRight{ true }, translateAxis{ ta }, rotatePlane{ rp }, movingSpeed{ 0.5f }, rotationSpeed{ 90.0f }, lastTime{ glfwGetTime() } { }
     } animationParam;
 
 public:
-    Controller(Object& o) : obj{ o } { }
+    Controller(Object& o) : obj{ o }, animationParam{ &obj.center.x, &obj.rotate.z } { }
 
     std::vector<std::vector<float>> imguiPosSliders()
     {
@@ -361,37 +366,71 @@ public:
         return getReflectionMatrix(obj.reflection.x, obj.reflection.y, obj.reflection.z);
     }
 
-    bool imguiAnimCB()
+    bool imguiAnim()
     {
+        static int chosenTranslationAxis{};
+        static int chosenRotationPlane{};
         ImGui::BeginChild("animation");
         ImGui::Text("Animation");
-        ImGui::Checkbox("On animation", &animationParam.isAnim);
+        if(ImGui::Checkbox("On animation", &animationParam.isAnim)) animationParam.lastTime = glfwGetTime();
+        ImGui::SliderFloat("moving speed", &animationParam.movingSpeed, 0.0f, 5.0f);
+        ImGui::SliderFloat("rotation speed", &animationParam.rotationSpeed, 0.0f, 720.0f, "%.1f");
         ImGui::Text("Axis of translation");
-        ImGui::RadioButton("x", &animationParam.translationAxis, 0);
-        ImGui::RadioButton("y", &animationParam.translationAxis, 1);
-        ImGui::RadioButton("z", &animationParam.translationAxis, 2);
+        if(ImGui::RadioButton("x", &chosenTranslationAxis, 0)) animationParam.translateAxis = &obj.center.x;
+        if(ImGui::RadioButton("y", &chosenTranslationAxis, 1)) animationParam.translateAxis = &obj.center.y;
+        if(ImGui::RadioButton("z", &chosenTranslationAxis, 2)) animationParam.translateAxis = &obj.center.z;
 
         ImGui::Text("Rotation plane");
-        ImGui::RadioButton("XOY", &animationParam.rotationPlane, 0);
-        ImGui::RadioButton("YOZ", &animationParam.rotationPlane, 1);
-        ImGui::RadioButton("XOZ", &animationParam.rotationPlane, 2);
+        if(ImGui::RadioButton("XOY", &chosenRotationPlane, 0)) animationParam.rotatePlane = &obj.rotate.z;
+        if(ImGui::RadioButton("YOZ", &chosenRotationPlane, 1)) animationParam.rotatePlane = &obj.rotate.x;
+        if(ImGui::RadioButton("XOZ", &chosenRotationPlane, 2)) animationParam.rotatePlane = &obj.rotate.y;
         ImGui::EndChild();
         ImGui::Separator();
         return animationParam.isAnim;
     }
 
     void animFrame()
-    {
-        
+    {   
+        double currentTime { glfwGetTime() };
+        float dt { static_cast<float>(currentTime - animationParam.lastTime) };
+        float chPos { animationParam.movingSpeed * dt };
+        float chAngle { animationParam.rotationSpeed * dt };
+        animationParam.lastTime = currentTime;
 
-        if(animationParam.isMovingOnRight) obj.center.x += 0.005;
-        else obj.center.x -= 0.005;
-        if (obj.center.x >= 1 || obj.center.x <= -1) animationParam.isMovingOnRight = !animationParam.isMovingOnRight;
+        if(animationParam.isMovingOnRight) *animationParam.translateAxis += chPos;
+        else *animationParam.translateAxis -= chPos;
+        //if (*animationParam.translateAxis  >= 1 || *animationParam.translateAxis  <= -1) animationParam.isMovingOnRight = !animationParam.isMovingOnRight;
+        if (*animationParam.translateAxis >= 1.0f) {
+            *animationParam.translateAxis = 1.0f;
+            animationParam.isMovingOnRight = false;
+        }
+        else if (*animationParam.translateAxis <= -1.0f) {
+            *animationParam.translateAxis = -1.0f;
+            animationParam.isMovingOnRight = true;
+        }
 
-        obj.rotate.x =  (++obj.rotate.x >= 180) ? -180 : obj.rotate.x;
-
+        *animationParam.rotatePlane = (*animationParam.rotatePlane >= 180) ? -180 : *animationParam.rotatePlane + chAngle;
     }
 };
+
+void drawAxes(float length = 2.0f)
+{
+    glBegin(GL_LINES);
+    
+    glColor3f(1.0f, 0.0f, 0.0f);
+    glVertex3f(0.0f, 0.0f, 0.0f);
+    glVertex3f(length, 0.0f, 0.0f);
+
+    glColor3f(0.0f, 1.0f, 0.0f);
+    glVertex3f(0.0f, 0.0f, 0.0f);
+    glVertex3f(0.0f, length, 0.0f);
+
+    glColor3f(0.0f, 0.0f, 1.0f);
+    glVertex3f(0.0f, 0.0f, 0.0f);
+    glVertex3f(0.0f, 0.0f, length);
+    
+    glEnd();
+}
 
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
@@ -423,6 +462,10 @@ int main()
 
     glMatrixMode(GL_PROJECTION);
     glOrtho(-1, 1, -1.0, 1.0, 0.1, 100.0);
+    glMatrixMode(GL_MODELVIEW);
+    glTranslatef(0.0f, 0.0f, -3.0f);
+    glRotatef(30.0f, 1.0f, 0.0f, 0.0f);
+    glRotatef(-40.0f, 0.0f, 1.0f, 0.0f);
 
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
@@ -439,9 +482,6 @@ int main()
 
     std::vector<std::vector<float>> transformMatrix;
 
-    std::cout << glfwGetTime() << std::endl;
-    double dt{ glfwGetTime() };
-
     while (!glfwWindowShouldClose(window))
     {
         
@@ -450,8 +490,7 @@ int main()
         ImGui::NewFrame();
         ImGui::Begin("Settings");
 
-        if (controller.imguiAnimCB())
-            controller.animFrame();
+        if (controller.imguiAnim()) controller.animFrame();
         transformMatrix = controller.imguiPosSliders();
         transformMatrix = matrixMult(transformMatrix, controller.imguiScaleSliders());
         transformMatrix = matrixMult(transformMatrix, controller.imguiRotateSliders());
@@ -467,13 +506,9 @@ int main()
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        glMatrixMode(GL_MODELVIEW);
-        glLoadIdentity();
 
-        glTranslatef(0.0f, 0.0f, -3.0f);
-        glRotatef(30.0f, 1.0f, 0.0f, 0.0f);
-        glRotatef(-40.0f, 0.0f, 1.0f, 0.0f);
-
+        
+        drawAxes();
         kLetter.draw();
 
         ImGui::Render();
