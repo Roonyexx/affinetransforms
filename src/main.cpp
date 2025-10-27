@@ -7,6 +7,7 @@
 #include <vector>
 #include <numbers>
 
+
 struct Vertex
 {
     float x{}, y{}, z{};
@@ -276,7 +277,7 @@ std::vector<std::vector<float>> getReflectionMatrix(float a, float b, float c)
 
 float degreeToRad(float angle)
 {
-    return angle * std::numbers::pi / 180.0;
+    return angle * std::numbers::pi / 180.0f;
 }
 
 class Controller
@@ -284,8 +285,18 @@ class Controller
 private:
     Object& obj;
 
+    struct AnimationParam
+    {
+        bool isAnim;
+        bool isMovingOnRight;
+        int translationAxis;
+        int rotationPlane;
+        
+        AnimationParam() : isAnim{ false }, isMovingOnRight{ true }, translationAxis{}, rotationPlane{} { }
+    } animationParam;
+
 public:
-    Controller(Object& o) : obj { o } { }
+    Controller(Object& o) : obj{ o } { }
 
     std::vector<std::vector<float>> imguiPosSliders()
     {
@@ -295,6 +306,7 @@ public:
         ImGui::SliderFloat("y", &obj.center.y, -1.0f, 1.0f, "%.3f");
         ImGui::SliderFloat("z", &obj.center.z, -1.0f, 1.0f, "%.3f");
         ImGui::EndChild();
+        ImGui::Separator();
 
         return getTranslateMatrix(obj.center.x, obj.center.y, obj.center.z);
     }
@@ -307,6 +319,7 @@ public:
         ImGui::SliderFloat("y", &obj.scale.y, 0.0f, 5.0f, "%.2f");
         ImGui::SliderFloat("z", &obj.scale.z, 0.0f, 5.0f, "%.2f");
         ImGui::EndChild();
+        ImGui::Separator();
 
         Vertex curCenter { obj.center };
 
@@ -325,6 +338,7 @@ public:
         ImGui::SliderFloat("y", &obj.rotate.y, -180.0f, 180.0f, "%.1f");
         ImGui::SliderFloat("z", &obj.rotate.z, -180.0f, 180.0f, "%.1f");
         ImGui::EndChild();
+        ImGui::Separator();
         
         std::vector<std::vector<float>> rotateMatrix { getRotateMatrixX(degreeToRad(obj.rotate.x)) };
         rotateMatrix = matrixMult(rotateMatrix, getRotateMatrixY(degreeToRad(obj.rotate.y)));
@@ -342,8 +356,40 @@ public:
         ImGui::Checkbox("YOZ", &obj.reflection.y);
         ImGui::Checkbox("XOZ", &obj.reflection.z);
         ImGui::EndChild();
+        ImGui::Separator();
 
         return getReflectionMatrix(obj.reflection.x, obj.reflection.y, obj.reflection.z);
+    }
+
+    bool imguiAnimCB()
+    {
+        ImGui::BeginChild("animation");
+        ImGui::Text("Animation");
+        ImGui::Checkbox("On animation", &animationParam.isAnim);
+        ImGui::Text("Axis of translation");
+        ImGui::RadioButton("x", &animationParam.translationAxis, 0);
+        ImGui::RadioButton("y", &animationParam.translationAxis, 1);
+        ImGui::RadioButton("z", &animationParam.translationAxis, 2);
+
+        ImGui::Text("Rotation plane");
+        ImGui::RadioButton("XOY", &animationParam.rotationPlane, 0);
+        ImGui::RadioButton("YOZ", &animationParam.rotationPlane, 1);
+        ImGui::RadioButton("XOZ", &animationParam.rotationPlane, 2);
+        ImGui::EndChild();
+        ImGui::Separator();
+        return animationParam.isAnim;
+    }
+
+    void animFrame()
+    {
+        
+
+        if(animationParam.isMovingOnRight) obj.center.x += 0.005;
+        else obj.center.x -= 0.005;
+        if (obj.center.x >= 1 || obj.center.x <= -1) animationParam.isMovingOnRight = !animationParam.isMovingOnRight;
+
+        obj.rotate.x =  (++obj.rotate.x >= 180) ? -180 : obj.rotate.x;
+
     }
 };
 
@@ -366,7 +412,7 @@ int main()
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
 
-    GLFWwindow* window = glfwCreateWindow(windowWidth, windowHeight, "надеюсь, я не забуду поменять это глупенькое название, я кстати попил вкусный зеленый чай", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(windowWidth, windowHeight, "аффинные преобразования", nullptr, nullptr);
     glfwMakeContextCurrent(window);
 
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
@@ -391,20 +437,28 @@ int main()
     Object kLetter { initLetterK() };
     Controller controller { kLetter };
 
-
     std::vector<std::vector<float>> transformMatrix;
+
+    std::cout << glfwGetTime() << std::endl;
+    double dt{ glfwGetTime() };
+
     while (!glfwWindowShouldClose(window))
     {
+        
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
         ImGui::Begin("Settings");
+
+        if (controller.imguiAnimCB())
+            controller.animFrame();
         transformMatrix = controller.imguiPosSliders();
         transformMatrix = matrixMult(transformMatrix, controller.imguiScaleSliders());
         transformMatrix = matrixMult(transformMatrix, controller.imguiRotateSliders());
         transformMatrix = matrixMult(transformMatrix, controller.imguiReflectionCB());
-        // 12.Вращение вокруг геометрического центра в одной плоскости с одновременным перемещением вдоль одной из осей.
-        
+
+
+
         ImGui::End();
 
         kLetter.setTransformMatrix(transformMatrix);
