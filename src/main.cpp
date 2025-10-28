@@ -6,12 +6,22 @@
 #include <iostream>
 #include <vector>
 #include <numbers>
-
+#include <cmath>
 
 struct Vertex
 {
-    float x{}, y{}, z{};
+    float x{}, y{}, z{}, w{1.0f};
 };
+
+Vertex multiplyVectorMatrix(const Vertex& v, const std::vector<std::vector<float>>& m)
+{
+    Vertex result;
+    result.x = v.x * m[0][0] + v.y * m[0][1] + v.z * m[0][2] + v.w * m[0][3];
+    result.y = v.x * m[1][0] + v.y * m[1][1] + v.z * m[1][2] + v.w * m[1][3];
+    result.z = v.x * m[2][0] + v.y * m[2][1] + v.z * m[2][2] + v.w * m[2][3];
+    result.w = v.x * m[3][0] + v.y * m[3][1] + v.z * m[3][2] + v.w * m[3][3];
+    return result;
+}
 
 class Object
 {
@@ -25,44 +35,51 @@ private:
         bool x{ false }, y{ false }, z{ false };
     };
 
-    void transformVertexes()
-    {
-        for (size_t i = 0; i < originalVertices.size(); i++)
-        {
-            const Vertex& src = originalVertices[i];
-            Vertex& dst = vertices[i];
-
-            for (size_t j = 0; j < 3; j++)
-            {
-                float temp { src.x * transformMatrix[0][j] +
-                            src.y * transformMatrix[1][j] +
-                            src.z * transformMatrix[2][j] +
-                            1.0f  * transformMatrix[3][j] };
-
-                switch (j)
-                {
-                    case 0: dst.x = temp; break;
-                    case 1: dst.y = temp; break;
-                    case 2: dst.z = temp; break;
-                }
-            }
-        }
-    }
-
+    
     std::vector<Vertex> originalVertices;
     std::vector<Vertex> vertices;
     std::vector<Edge> edges;
     std::vector<std::vector<float>> transformMatrix;
-public:
+    std::vector<std::vector<float>> viewMatrix;
+    std::vector<std::vector<float>> projectionMatrix;
+    
+    public:
     Vertex center;
     Vertex scale;
     Vertex rotate;
     Reflection reflection;
-
-    Object() : transformMatrix(4, std::vector<float>(4, 0.0f)), scale { 1, 1, 1 }
+    
+    Object() : transformMatrix(4, std::vector<float>(4, 0.0f)), 
+    viewMatrix(4, std::vector<float>(4, 0.0f)),
+    projectionMatrix(4, std::vector<float>(4, 0.0f)),
+    scale { 1, 1, 1 }
     {
         for (size_t i{}; i < 4; i++)
+        {
             transformMatrix[i][i] = 1.0f;
+            viewMatrix[i][i] = 1.0f;
+            projectionMatrix[i][i] = 1.0f;
+        }
+    }
+    
+    void transformVertexes()
+    {
+        for (size_t i = 0; i < originalVertices.size(); i++)
+        {
+            Vertex src;
+            src.x = originalVertices[i].x;
+            src.y = originalVertices[i].y;
+            src.z = originalVertices[i].z;
+            src.w = 1.0f;
+
+            Vertex temp = multiplyVectorMatrix(src, transformMatrix);
+            temp = multiplyVectorMatrix(temp, viewMatrix);
+            Vertex result = multiplyVectorMatrix(temp, projectionMatrix);
+            
+            vertices[i].x = result.x;
+            vertices[i].y = result.y;
+            vertices[i].z = result.z;
+        }
     }
 
     void draw()
@@ -79,8 +96,6 @@ public:
             glVertex3f(v2.x, v2.y, v2.z);
         }
         glEnd();
-        
-
     }
 
     void setTransformMatrix(const std::vector<std::vector<float>>& transformMatrix)
@@ -94,11 +109,27 @@ public:
         transformVertexes();
     }
 
+    void setViewMatrix(const std::vector<std::vector<float>>& viewMatrix)
+    {
+        if (viewMatrix.size() != 4 || viewMatrix[0].size() != 4)
+            throw std::runtime_error("invalid arg");
 
+        for (size_t i = 0; i < 4; i++)
+            this->viewMatrix[i] = viewMatrix[i];
+    }
+
+    void setProjectionMatrix(const std::vector<std::vector<float>>& projectionMatrix)
+    {
+        if (projectionMatrix.size() != 4 || projectionMatrix[0].size() != 4)
+            throw std::runtime_error("invalid arg");
+
+        for (size_t i = 0; i < 4; i++)
+            this->projectionMatrix[i] = projectionMatrix[i];
+    }
 
     friend Object initLetterK();
+    friend Object initAxes();
 };
-
 
 Object initLetterK()
 {
@@ -166,7 +197,6 @@ Object initLetterK()
         {9,20},
         {10,21}
     };
-    
 
     Vertex minpos { obj.originalVertices[0].x, obj.originalVertices[0].y, obj.originalVertices[0].z };
     Vertex maxpos { obj.originalVertices[0].x, obj.originalVertices[0].y, obj.originalVertices[0].z };
@@ -189,6 +219,24 @@ Object initLetterK()
         vertex.y -= v.y;
         vertex.z -= v.z;
     }
+    obj.vertices = obj.originalVertices;
+    return obj;
+}
+
+Object initAxes()
+{
+    Object obj;
+    obj.originalVertices = {
+        { 0, 0, 0 },
+        { 2, 0, 0 },
+        { 0, 2, 0 },
+        { 0, 0, 2 }
+    };
+    obj.edges = {
+        { 0, 1 },
+        { 0, 2 },
+        { 0, 3 }
+    };
     obj.vertices = obj.originalVertices;
     return obj;
 }
@@ -216,10 +264,10 @@ std::vector<std::vector<T>> matrixMult(const std::vector<std::vector<T>>& m1, co
 std::vector<std::vector<float>> getTranslateMatrix(float dx, float dy, float dz)
 {
     return {
-        { 1, 0, 0, 0 },
-        { 0, 1, 0, 0 },
-        { 0, 0, 1, 0 },
-        { dx, dy, dz, 1 }
+        { 1, 0, 0, dx },
+        { 0, 1, 0, dy },
+        { 0, 0, 1, dz },
+        { 0, 0, 0, 1 }
     };
 }
 
@@ -265,14 +313,29 @@ std::vector<std::vector<float>> getRotateMatrixZ(float angle)
 
 std::vector<std::vector<float>> getReflectionMatrix(float a, float b, float c)
 {
-    a = (int)a ? -1.0f : 1.0f;
-    b = (int)b ? -1.0f : 1.0f;
-    c = (int)c ? -1.0f : 1.0f;
+    float rx = (int)b ? -1.0f : 1.0f;  
+    float ry = (int)c ? -1.0f : 1.0f; 
+    float rz = (int)a ? -1.0f : 1.0f;  
     return {
-        { b, 0, 0, 0 },
-        { 0, c, 0, 0 },
-        { 0, 0, a, 0 },
+        { rx, 0, 0, 0 },
+        { 0, ry, 0, 0 },
+        { 0, 0, rz, 0 },
         { 0, 0, 0, 1 }
+    };
+}
+
+
+std::vector<std::vector<float>> getOrthoMatrix(float left, float right, float bottom, float top, float nearVal, float farVal)
+{
+    float tx = -(right + left) / (right - left);
+    float ty = -(top + bottom) / (top - bottom);
+    float tz = -(farVal + nearVal) / (farVal - nearVal);
+    
+    return {
+        { 2.0f / (right - left), 0, 0, 0 },
+        { 0, 2.0f / (top - bottom), 0, 0 },
+        { 0, 0, -2.0f / (farVal - nearVal), 0 },
+        { tx, ty, tz, 1 }
     };
 }
 
@@ -295,7 +358,6 @@ private:
         float movingSpeed;
         float rotationSpeed;
         double lastTime;
-
         
         AnimationParam(float* ta, float* rp) : isAnim{ false }, isMovingOnRight{ true }, translateAxis{ ta }, rotatePlane{ rp }, movingSpeed{ 0.5f }, rotationSpeed{ 90.0f }, lastTime{ glfwGetTime() } { }
     } animationParam;
@@ -311,8 +373,7 @@ public:
         ImGui::SliderFloat("y", &obj.center.y, -1.0f, 1.0f, "%.3f");
         ImGui::SliderFloat("z", &obj.center.z, -1.0f, 1.0f, "%.3f");
         ImGui::EndChild();
-        ImGui::Separator();
-
+        ImGui::Separator();        
         return getTranslateMatrix(obj.center.x, obj.center.y, obj.center.z);
     }
 
@@ -326,13 +387,7 @@ public:
         ImGui::EndChild();
         ImGui::Separator();
 
-        Vertex curCenter { obj.center };
-
-        std::vector<std::vector<float>> tmp { getTranslateMatrix(-curCenter.x, -curCenter.y, -curCenter.z) };
-        tmp = matrixMult(tmp, getScaleMatrix(obj.scale.x, obj.scale.y, obj.scale.z));
-        tmp = matrixMult(tmp, getTranslateMatrix(curCenter.x, curCenter.y, curCenter.z));
-
-        return tmp;
+        return getScaleMatrix(obj.scale.x, obj.scale.y, obj.scale.z);
     }
 
     std::vector<std::vector<float>> imguiRotateSliders()
@@ -348,8 +403,6 @@ public:
         std::vector<std::vector<float>> rotateMatrix { getRotateMatrixX(degreeToRad(obj.rotate.x)) };
         rotateMatrix = matrixMult(rotateMatrix, getRotateMatrixY(degreeToRad(obj.rotate.y)));
         rotateMatrix = matrixMult(rotateMatrix, getRotateMatrixZ(degreeToRad(obj.rotate.z)));
-        rotateMatrix = matrixMult(getTranslateMatrix(-obj.center.x, -obj.center.y, -obj.center.z), rotateMatrix);
-        rotateMatrix = matrixMult(rotateMatrix, getTranslateMatrix(obj.center.x, obj.center.y, obj.center.z));
         return rotateMatrix;
     }
 
@@ -372,8 +425,8 @@ public:
         static int chosenRotationPlane{};
         ImGui::BeginChild("animation");
         ImGui::Text("Animation");
-        if(ImGui::Checkbox("On animation", &animationParam.isAnim)) animationParam.lastTime = glfwGetTime();
-        ImGui::SliderFloat("moving speed", &animationParam.movingSpeed, 0.0f, 5.0f);
+        if(ImGui::Checkbox("On animate", &animationParam.isAnim)) animationParam.lastTime = glfwGetTime();
+        ImGui::SliderFloat("moving speed", &animationParam.movingSpeed, 0.0f, 5.0f, "%.1f");
         ImGui::SliderFloat("rotation speed", &animationParam.rotationSpeed, 0.0f, 720.0f, "%.1f");
         ImGui::Text("Axis of translation");
         if(ImGui::RadioButton("x", &chosenTranslationAxis, 0)) animationParam.translateAxis = &obj.center.x;
@@ -399,7 +452,7 @@ public:
 
         if(animationParam.isMovingOnRight) *animationParam.translateAxis += chPos;
         else *animationParam.translateAxis -= chPos;
-        //if (*animationParam.translateAxis  >= 1 || *animationParam.translateAxis  <= -1) animationParam.isMovingOnRight = !animationParam.isMovingOnRight;
+        
         if (*animationParam.translateAxis >= 1.0f) {
             *animationParam.translateAxis = 1.0f;
             animationParam.isMovingOnRight = false;
@@ -412,25 +465,6 @@ public:
         *animationParam.rotatePlane = (*animationParam.rotatePlane >= 180) ? -180 : *animationParam.rotatePlane + chAngle;
     }
 };
-
-void drawAxes(float length = 2.0f)
-{
-    glBegin(GL_LINES);
-    
-    glColor3f(1.0f, 0.0f, 0.0f);
-    glVertex3f(0.0f, 0.0f, 0.0f);
-    glVertex3f(length, 0.0f, 0.0f);
-
-    glColor3f(0.0f, 1.0f, 0.0f);
-    glVertex3f(0.0f, 0.0f, 0.0f);
-    glVertex3f(0.0f, length, 0.0f);
-
-    glColor3f(0.0f, 0.0f, 1.0f);
-    glVertex3f(0.0f, 0.0f, 0.0f);
-    glVertex3f(0.0f, 0.0f, length);
-    
-    glEnd();
-}
 
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
@@ -460,15 +494,20 @@ int main()
         return -1;
     }
 
+    std::vector<std::vector<float>> projectionMatrix = getOrthoMatrix(-1.0f, 1.0f, -1.0f, 1.0f, 0.1f, 100.0f);
+    std::vector<std::vector<float>> modelViewMatrix = getTranslateMatrix(0.0f, 0.0f, -3.0f);
+    modelViewMatrix = matrixMult(modelViewMatrix, getRotateMatrixX(degreeToRad(30.0f)));
+    modelViewMatrix = matrixMult(modelViewMatrix, getRotateMatrixY(degreeToRad(-40.0f)));
+
+    modelViewMatrix = matrixMult(modelViewMatrix, getScaleMatrix(1.0f, 1.0f, -1.0f));
+
+
     glMatrixMode(GL_PROJECTION);
-    glOrtho(-1, 1, -1.0, 1.0, 0.1, 100.0);
+    glLoadIdentity();
     glMatrixMode(GL_MODELVIEW);
-    glTranslatef(0.0f, 0.0f, -3.0f);
-    glRotatef(30.0f, 1.0f, 0.0f, 0.0f);
-    glRotatef(-40.0f, 0.0f, 1.0f, 0.0f);
+    glLoadIdentity();
 
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
-
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -478,13 +517,19 @@ int main()
     ImGui_ImplOpenGL3_Init("#version 120");
 
     Object kLetter { initLetterK() };
+    kLetter.setProjectionMatrix(projectionMatrix);
+    kLetter.setViewMatrix(modelViewMatrix);
+    Object Axes { initAxes() };
+    Axes.setProjectionMatrix(projectionMatrix);
+    Axes.setViewMatrix(modelViewMatrix);
+    Axes.transformVertexes();
+    
     Controller controller { kLetter };
 
     std::vector<std::vector<float>> transformMatrix;
 
     while (!glfwWindowShouldClose(window))
     {
-        
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
@@ -492,23 +537,18 @@ int main()
 
         if (controller.imguiAnim()) controller.animFrame();
         transformMatrix = controller.imguiPosSliders();
-        transformMatrix = matrixMult(transformMatrix, controller.imguiScaleSliders());
         transformMatrix = matrixMult(transformMatrix, controller.imguiRotateSliders());
+        transformMatrix = matrixMult(transformMatrix, controller.imguiScaleSliders());
         transformMatrix = matrixMult(transformMatrix, controller.imguiReflectionCB());
-
-
 
         ImGui::End();
 
         kLetter.setTransformMatrix(transformMatrix);
 
-
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
-
-        
-        drawAxes();
+        Axes.draw();
         kLetter.draw();
 
         ImGui::Render();
@@ -526,4 +566,3 @@ int main()
 
     return 0;
 }
-
