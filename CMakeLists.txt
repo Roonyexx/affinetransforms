@@ -9,7 +9,13 @@ find_package(glad CONFIG REQUIRED)
 find_package(imgui CONFIG REQUIRED)
 find_package(OpenGL REQUIRED)
 
-add_executable(${PROJECT_NAME} src/main.cpp)
+file(GLOB_RECURSE SOURCES src/*.cpp)
+
+add_executable(${PROJECT_NAME} ${SOURCES})
+
+target_include_directories(${PROJECT_NAME} PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
   glfw
