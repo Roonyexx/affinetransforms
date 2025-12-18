@@ -84,7 +84,7 @@ struct Plane {
 
 class Object {
 public:
-    Vertex viewDirection{ 0, 0, 1 };
+    Vertex viewDirection{ 0, 0, -1 };
     std::vector<Vertex> original, world, projected;
     std::vector<std::pair<int,int>> edges;
     std::vector<Plane> planes;
@@ -118,19 +118,28 @@ public:
     void setProjection(const std::vector<std::vector<float>>& p) { projection = p; recompute(); }
 
     void updateFaceFacingEye() {
+        computeCenter();
         for (auto &pl : planes) {
             Vertex v0, v1, v2;
-            if (!pl.tris.empty()) {
-                auto &tri = pl.tris[0];
-                v0 = projected[tri[0]]; v1 = projected[tri[1]]; v2 = projected[tri[2]];
-            } 
-            else {
-                if (pl.verts.size() < 3) { pl.facing = false; continue; }
-                v0 = projected[pl.verts[0]]; v1 = projected[pl.verts[1]]; v2 = projected[pl.verts[2]];
-            }
+            // if (!pl.tris.empty()) {
+            //     auto &tri = pl.tris[0];
+            //     v0 = world[tri[0]]; v1 = world[tri[1]]; v2 = world[tri[2]];
+            // } 
+            // else {
+                //if (pl.verts.size() < 3) { pl.facing = false; continue; }
+                //}
+            v0 = world[pl.verts[0]]; v1 = world[pl.verts[1]]; v2 = world[pl.verts[2]];
             Vertex a{v1.x-v0.x, v1.y-v0.y, v1.z-v0.z};
             Vertex b{v2.x-v0.x, v2.y-v0.y, v2.z-v0.z};
             Vertex n;
+
+            Vertex toFace{v0.x - center.x, v0.y - center.y, v0.z - center.z};
+            if (dot(n, toFace) > 0.0f) {
+                n.x = -n.x; 
+                n.y = -n.y; 
+                n.z = -n.z;
+            }
+
             n.x = a.y*b.z - a.z*b.y;
             n.y = a.z*b.x - a.x*b.z;
             n.z = a.x*b.y - a.y*b.x;
@@ -138,6 +147,20 @@ public:
             pl.dot = dot(n, viewDirection);
         
             pl.facing = (pl.dot > 0.0f);
+        }
+    }
+
+    void computeCenter() {
+        center = {0, 0, 0};
+        for (const auto& v : world) {
+            center.x += v.x;
+            center.y += v.y;
+            center.z += v.z;
+        }
+        if (!world.empty()) {
+            center.x /= world.size();
+            center.y /= world.size();
+            center.z /= world.size();
         }
     }
 
@@ -221,72 +244,102 @@ public:
     }
 };
 
-Object initLetterK() {
+Object initCube()
+{
     Object o;
     o.original = {
-        make_vertex(-0.2f,  0.2f,  0.0f), 
-        make_vertex(-0.2f, -0.2f,  0.0f), 
-        make_vertex(-0.1f, -0.2f,  0.0f),
-        make_vertex(-0.1f, -0.05f, 0.0f), 
-        make_vertex( 0.05f,-0.2f,  0.0f), 
-        make_vertex( 0.15f,-0.2f,  0.0f), 
-        make_vertex(-0.05f, 0.0f,  0.0f), 
-        make_vertex( 0.1f,  0.2f,  0.0f),
-        make_vertex( 0.0f,  0.2f,  0.0f), 
-        make_vertex(-0.1f,  0.075f,0.0f), 
-        make_vertex(-0.1f,  0.2f,  0.0f), 
-        make_vertex(-0.2f,  0.2f, -0.1f), 
-        make_vertex(-0.2f, -0.2f, -0.1f), 
-        make_vertex(-0.1f, -0.2f, -0.1f), 
-        make_vertex(-0.1f, -0.05f,-0.1f), 
-        make_vertex( 0.05f,-0.2f, -0.1f), 
-        make_vertex( 0.15f,-0.2f, -0.1f), 
-        make_vertex(-0.05f, 0.0f, -0.1f), 
-        make_vertex( 0.1f,  0.2f, -0.1f), 
-        make_vertex( 0.0f,  0.2f, -0.1f), 
-        make_vertex(-0.1f,  0.075f,-0.1f), 
-        make_vertex(-0.1f,  0.2f, -0.1f) 
+        make_vertex(-0.2f, -0.2f, -0.2f),
+        make_vertex( 0.2f, -0.2f, -0.2f),
+        make_vertex( 0.2f,  0.2f, -0.2f),
+        make_vertex(-0.2f,  0.2f, -0.2f),
+        make_vertex(-0.2f, -0.2f,  0.2f),
+        make_vertex( 0.2f, -0.2f,  0.2f),
+        make_vertex( 0.2f,  0.2f,  0.2f),
+        make_vertex(-0.2f,  0.2f,  0.2f)
     };
 
     o.edges = {
-        {0,1},{1,2},{2,3},{3,4},{4,5},{5,6},{6,7},{7,8},{8,9},{9,10},{10,0},
-        {11,12},{12,13},{13,14},{14,15},{15,16},{16,17},{17,18},{18,19},{19,20},{20,21},{21,11},
-        {0,11},{1,12},{2,13},{3,14},{4,15},{5,16},{6,17},{7,18},{8,19},{9,20},{10,21}
+        {0,1},{1,2},{2,3},{3,0},
+        {4,5},{5,6},{6,7},{7,4},
+        {0,4},{1,5},{2,6},{3,7}
     };
 
-    Vertex minp = o.original[0], maxp = o.original[0];
-    for (auto &v : o.original) {
-        minp.x = std::min(minp.x, v.x);
-        minp.y = std::min(minp.y, v.y);
-        minp.z = std::min(minp.z, v.z);
-        maxp.x = std::max(maxp.x, v.x);
-        maxp.y = std::max(maxp.y, v.y);
-        maxp.z = std::max(maxp.z, v.z);
-    }
-    Vertex center = {(minp.x+maxp.x)/2.0f, (minp.y+maxp.y)/2.0f, (minp.z+maxp.z)/2.0f};
-    for (auto &v : o.original) {
-        v.x -= center.x;
-        v.y -= center.y;
-        v.z -= center.z;
-    }
-
-    o.planes.push_back({{0,1,2,3,4,5,6,7,8,9,10},
-                        {{0,1,10},{1,2,10},{3,4,9},{4,6,9},{4,5,6},{6,7,9},{7,8,9}}});
-    o.planes.push_back({{11,12,13,14,15,16,17,18,19,20,21},
-                        {{11,21,12},{12,21,13},{14,20,15},{15,20,17},{15,17,16},{17,20,18},{18,20,19}}});
-    o.planes.push_back({{0,11,12,1},{}});
-    o.planes.push_back({{1,12,13,2},{}});
-    o.planes.push_back({{2,13,14,3},{}});
-    o.planes.push_back({{3,14,15,4},{}});
-    o.planes.push_back({{4,15,16,5},{}});
-    o.planes.push_back({{5,16,17,6},{}});
-    o.planes.push_back({{6,17,18,7},{}});
-    o.planes.push_back({{7,18,19,8},{}});
-    o.planes.push_back({{8,19,20,9},{}});
-    o.planes.push_back({{9,20,21,10},{}});
-    o.planes.push_back({{10,21,11,0},{}});
+    o.planes.push_back({{0,1,2,3},{}});
+    o.planes.push_back({{4,7,6,5},{}});
+    o.planes.push_back({{0,4,5,1},{}});
+    o.planes.push_back({{2,6,7,3},{}});
+    o.planes.push_back({{0,3,7,4},{}});
+    o.planes.push_back({{1,5,6,2},{}});
+    
     return o;
 }
+
+// Object initLetterK() {
+//     Object o;
+//     o.original = {
+//         make_vertex(-0.2f,  0.2f,  0.0f), 
+//         make_vertex(-0.2f, -0.2f,  0.0f), 
+//         make_vertex(-0.1f, -0.2f,  0.0f),
+//         make_vertex(-0.1f, -0.05f, 0.0f), 
+//         make_vertex( 0.05f,-0.2f,  0.0f), 
+//         make_vertex( 0.15f,-0.2f,  0.0f), 
+//         make_vertex(-0.05f, 0.0f,  0.0f), 
+//         make_vertex( 0.1f,  0.2f,  0.0f),
+//         make_vertex( 0.0f,  0.2f,  0.0f), 
+//         make_vertex(-0.1f,  0.075f,0.0f), 
+//         make_vertex(-0.1f,  0.2f,  0.0f), 
+//         make_vertex(-0.2f,  0.2f, -0.1f), 
+//         make_vertex(-0.2f, -0.2f, -0.1f), 
+//         make_vertex(-0.1f, -0.2f, -0.1f), 
+//         make_vertex(-0.1f, -0.05f,-0.1f), 
+//         make_vertex( 0.05f,-0.2f, -0.1f), 
+//         make_vertex( 0.15f,-0.2f, -0.1f), 
+//         make_vertex(-0.05f, 0.0f, -0.1f), 
+//         make_vertex( 0.1f,  0.2f, -0.1f), 
+//         make_vertex( 0.0f,  0.2f, -0.1f), 
+//         make_vertex(-0.1f,  0.075f,-0.1f), 
+//         make_vertex(-0.1f,  0.2f, -0.1f) 
+//     };
+//
+//     o.edges = {
+//         {0,1},{1,2},{2,3},{3,4},{4,5},{5,6},{6,7},{7,8},{8,9},{9,10},{10,0},
+//         {11,12},{12,13},{13,14},{14,15},{15,16},{16,17},{17,18},{18,19},{19,20},{20,21},{21,11},
+//         {0,11},{1,12},{2,13},{3,14},{4,15},{5,16},{6,17},{7,18},{8,19},{9,20},{10,21}
+//     };
+//
+//     Vertex minp = o.original[0], maxp = o.original[0];
+//     for (auto &v : o.original) {
+//         minp.x = std::min(minp.x, v.x);
+//         minp.y = std::min(minp.y, v.y);
+//         minp.z = std::min(minp.z, v.z);
+//         maxp.x = std::max(maxp.x, v.x);
+//         maxp.y = std::max(maxp.y, v.y);
+//         maxp.z = std::max(maxp.z, v.z);
+//     }
+//     Vertex center = {(minp.x+maxp.x)/2.0f, (minp.y+maxp.y)/2.0f, (minp.z+maxp.z)/2.0f};
+//     for (auto &v : o.original) {
+//         v.x -= center.x;
+//         v.y -= center.y;
+//         v.z -= center.z;
+//     }
+//
+//     o.planes.push_back({{0,1,2,3,4,5,6,7,8,9,10},
+//                         {{0,1,10},{1,2,10},{3,4,9},{4,6,9},{4,5,6},{6,7,9},{7,8,9}}});
+//     o.planes.push_back({{11,12,13,14,15,16,17,18,19,20,21},
+//                         {{11,21,12},{12,21,13},{14,20,15},{15,20,17},{15,17,16},{17,20,18},{18,20,19}}});
+//     o.planes.push_back({{0,11,12,1},{}});
+//     o.planes.push_back({{1,12,13,2},{}});
+//     o.planes.push_back({{2,13,14,3},{}});
+//     o.planes.push_back({{3,14,15,4},{}});
+//     o.planes.push_back({{4,15,16,5},{}});
+//     o.planes.push_back({{5,16,17,6},{}});
+//     o.planes.push_back({{6,17,18,7},{}});
+//     o.planes.push_back({{7,18,19,8},{}});
+//     o.planes.push_back({{8,19,20,9},{}});
+//     o.planes.push_back({{9,20,21,10},{}});
+//     o.planes.push_back({{10,21,11,0},{}});
+//     return o;
+// }
 
 Object initAxes() {
     Object a;
@@ -436,15 +489,17 @@ int main() {
     view = matMul(view, rotY(deg2rad(-40.0f)));
     view = matMul(view, scaleMat(1.0f,1.0f,-1.0f));
 
-    Object k = initLetterK();
+    // Object k = initLetterK();
+    Object cube = initCube();
     Object axes = initAxes();
-    k.setView(view);  axes.setView(view);
+    cube.setView(view);  
+    axes.setView(view);
 
     auto proj = ortho(-1.0f,1.0f,-1.0f,1.0f,0.1f,100.0f);
-    k.setProjection(proj);
+    cube.setProjection(proj);
     axes.setProjection(proj);
 
-    Controller ctrl(k);
+    Controller ctrl(cube);
 
 
     while (!glfwWindowShouldClose(window)) {
@@ -470,15 +525,15 @@ int main() {
         modelMat = matMul(modelMat, R);
         modelMat = matMul(modelMat, S);
         //modelMat = matMul(modelMat, refl);
-        k.setModel(modelMat);
+        cube.setModel(modelMat);
 
         ImGui::End();
 
         ImGui::Begin("Roberts Info");
-        for (size_t i=0; i<k.planes.size(); ++i) {
+        for (size_t i=0; i<cube.planes.size(); ++i) {
             std::ostringstream oss;
-            oss<<"Face "<<i<<" dot = "<<k.planes[i].dot;
-            if (k.planes[i].facing) 
+            oss<<"Face "<<i<<" dot = "<<cube.planes[i].dot;
+            if (cube.planes[i].facing) 
                 ImGui::TextColored(ImVec4(0.3f,1.0f,0.3f,1.0f), "%s", oss.str().c_str());
             else
                 ImGui::TextColored(ImVec4(1.0f,0.3f,0.3f,1.0f), "%s", oss.str().c_str());
@@ -488,7 +543,7 @@ int main() {
         glClearColor(0.1f,0.1f,0.1f,1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         axes.draw();
-        k.draw();
+        cube.draw();
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
