@@ -19,10 +19,11 @@ Vertex mulMatVec(const std::vector<std::vector<float>>& m, const Vertex& v) {
     return r;
 }
 
-std::vector<std::vector<float>> matMul(const std::vector<std::vector<float>>& A, const std::vector<std::vector<float>>& B) {
-    if (A[0].size() != B.size()) {
+std::vector<std::vector<float>> matMul(const std::vector<std::vector<float>>& A, 
+                                       const std::vector<std::vector<float>>& B) {
+    if (A[0].size() != B.size()) 
         throw std::runtime_error("invalid matrix multiplication");
-    }
+    
 
     const size_t r = A.size();
     const size_t c = B[0].size();
@@ -30,8 +31,12 @@ std::vector<std::vector<float>> matMul(const std::vector<std::vector<float>>& A,
 
     std::vector<std::vector<float>> R(r, std::vector<float>(c, 0.0f));
     for (size_t i = 0; i < r; i++) {
+        if (A[i].size() != k) throw std::runtime_error("invalid matrix multiplication");
+
         for (size_t j = 0; j < c; j++) {
             for (size_t t = 0; t < k; t++) {
+                if (B[t].size() != c || j >= B[t].size())
+                    throw std::runtime_error("invalid matrix multiplication");
                 R[i][j] += A[i][t] * B[t][j];
             }
         }

@@ -101,6 +101,23 @@ TEST(MatMul, SupportsNonSquare) {
     ExpectMatrixEq(A, B, result, {{11}}, "1x2 by 2x1 multiplication must produce a 1x1 matrix");
 }
 
+TEST(MatMul, NotSameSizeInDiffRow) {
+    const std::vector<std::vector<float>> A{{1, 2}, {3, 4}};
+    const std::vector<std::vector<float>> B{{5, 6, 7}, {8, 9}};
+
+    EXPECT_THROW(
+        {
+            try {
+                (void)matMul(A, B);
+            } catch (const std::runtime_error& e) {
+                EXPECT_STREQ("invalid matrix multiplication", e.what())
+                    << "Unexpected runtime_error message for dimension mismatch";
+                throw;
+            }
+        },
+        std::runtime_error);
+}
+
 TEST(MatMul, ThrowsOnIncompatibleDimensions) {
     const std::vector<std::vector<float>> A{{1, 2}, {3, 4}};
     const std::vector<std::vector<float>> B{{1, 2}, {3, 4}, {5, 6}};
